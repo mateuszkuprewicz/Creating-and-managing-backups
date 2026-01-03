@@ -9,8 +9,7 @@ public class Monitoring
     }
     private string TargetPath { get; set; }
     private string SourcePath { get; set; }
-    
-    public void Watch()
+    public void Watch(CancellationToken token)
     {
         using var watcher = new FileSystemWatcher(SourcePath, "*");
         watcher.Created += OnCreated;
@@ -20,8 +19,17 @@ public class Monitoring
         watcher.Error += OnError;
         watcher.IncludeSubdirectories = true;
         watcher.EnableRaisingEvents = true;
-        
-        Thread.Sleep(Timeout.Infinite);
+
+        while (Directory.Exists(SourcePath) && !token.IsCancellationRequested)
+        {
+            Thread.Sleep(100);
+        }
+        if (token.IsCancellationRequested)
+            Console.WriteLine($"Monitoring {SourcePath} to {TargetPath} ended");
+        else
+        {
+            Console.Error.WriteLine($"{SourcePath} missing. Monitoring {SourcePath} -> {TargetPath} ended");
+        }
     }
     
     private void OnChanged(object sender, FileSystemEventArgs e)
@@ -53,12 +61,17 @@ public class Monitoring
 
     private void OnCreated(object sender, FileSystemEventArgs e)
     {
-        // await Task.Delay(100);
-        // if (!Directory.Exists(e.FullPath) && !File.Exists(e.FullPath)) return;
-        
         if (Directory.Exists(e.FullPath)) //dir
         {
-            Directory.CreateDirectory(CopingMethods.GetDestPath(SourcePath, TargetPath, e.FullPath));
+            DirectoryInfo directoryInfo = new DirectoryInfo(e.FullPath);
+            if (directoryInfo.LinkTarget == null) //normal directory
+            {
+                Directory.CreateDirectory(CopingMethods.GetDestPath(SourcePath, TargetPath, e.FullPath));
+            }
+            else //symbolic link
+            {
+                CopingMethods.CopySymLink(SourcePath, TargetPath, e.FullPath);
+            }
         }
         else //file
         {
@@ -77,13 +90,15 @@ public class Monitoring
 
     private void OnDeleted(object sender, FileSystemEventArgs e)
     {
-        if (Directory.Exists(e.FullPath)) //dir
+        string destPath = CopingMethods.GetDestPath(SourcePath, TargetPath, e.FullPath); //Entry in the source-dir 
+        //doesn't exist, so the type of entry must be checked in the backup directory 
+        if (Directory.Exists(destPath)) //dir
         {
-            Directory.Delete(CopingMethods.GetDestPath(SourcePath, TargetPath, e.FullPath), true);
+            Directory.Delete(destPath, true);
         }
         else //file
         {
-            File.Delete(CopingMethods.GetDestPath(SourcePath, TargetPath, e.FullPath));
+            File.Delete(destPath);
         }
     }
 
@@ -103,8 +118,8 @@ public class Monitoring
         }
     }
 
-    private static void OnError(object sender, ErrorEventArgs e)
+    private void OnError(object sender, ErrorEventArgs e)
     {
-        Console.WriteLine(e.GetException());
+        Console.Error.WriteLine(e.GetException());
     }
 }

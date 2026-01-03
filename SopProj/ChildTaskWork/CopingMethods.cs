@@ -10,7 +10,7 @@ public class CopingMethods
             Console.Error.WriteLine("Cannot make a Copy inside a copied directory");
             return -2;
         }
-        //Do source folder exist?
+        //Does source folder exist?
         if (!Directory.Exists(sourcePath))
         {
             Console.Error.WriteLine("Source directory not found");
